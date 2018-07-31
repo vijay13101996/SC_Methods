@@ -212,14 +212,17 @@ for i in range(len(pointarr)):
     
         Timecontour = Ttarget
         
+        
+        
 
-            
+        ax=plt.subplots()
+        plt.suptitle('Singularity time structure for initial conditions: ({},{})  Coordinate index: {}'.format(pointarr[0][0],pointarr[0][1],coordin))
+        
+        ax = Complex_plotter.plotcomplex(pyfinbar,1,10,tre[0],tre[len(tre)-1],tim[0],tim[len(tim)-1])
         for tc in range(len(Timecontour)):
             plt.scatter(real(Timecontour[tc]),imag(Timecontour[tc]))
             
         plt.plot(real(Timecontour),imag(Timecontour))
-        
-        Complex_plotter.plotcomplex(pxfinbar,1,10,tre[0],tre[len(tre)-1],tim[0],tim[len(tim)-1])
         plt.show()
         # #fig = plt.figure(2)
         # #fig.figsize = fig_size

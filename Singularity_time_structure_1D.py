@@ -12,15 +12,13 @@ import matplotlib.backends.backend_tkagg as backend
 from matplotlib.figure import Figure
 import pickle, pprint
 from matplotlib import pyplot as plt
-#from Parameter_file_Singularity_time_structure import *
+from Parameter_file_Singularity_time_structure_1D import *
 import Complex_plotter
 import matplotlib.colors as mcolors
 from matplotlib.colors import hsv_to_rgb
 import io
 
-plot_full_time = 0
-
-
+plot_full_time = 1
 
 plot = 1
 tarr = []
@@ -29,9 +27,7 @@ pyarr = []
 xarr = []
 yarr=[]
 trajon = 0
-dt=0.02
-tre = np.arange(0.0,8+0.1*dt,dt)
-tim = np.arange(-2.,2.+0.1*dt,dt)
+
 
 
 #print(tre,tim)
@@ -62,8 +58,7 @@ def f(t,r,dti):
     #previous = turningpoints[1]
     #print("Hi")
     q,p =  r
-    dxpotential(q) = np.sin(q)
-    drdt = array([p,-dxpotential(q)])*dti
+    drdt = array([p,-dpotential(q)])*dti
     return drdt
 
     
@@ -85,9 +80,8 @@ def faux(t,r,dti):
     #print('pole',py,py*(x-1j*pi/2)**0.5)#,(x-1j*pi/2))
     #print('Energy',px**2/2 + py**2/2 + potential(x,y),'Potential',potential(x,y))
     #print('x',x,'px',px)
-    dxpotential(q) = np.sin(q)
     
-    drdt = array([p,-dxpotential(q)])*dti
+    drdt = array([p,-dpotential(q)])*dti
     #print('residue',x+1j*pi/2,(x+1j*pi/2)**3)              
     return drdt.view(dtype=float)
 
@@ -193,25 +187,108 @@ def finalcondition(xinit,pxinit,data,tre,tim):
             #print(Time[tr][ti],data[tr][ti][0])
             trun+=dtre
 
+def finalcondition_transversal(xinit,pxinit,data,tre,tim):
+    sol = ode(f)
+    sol.set_integrator('zvode',nsteps=1e3)
+    
             
+    y0 = array([xinit,pxinit])
+    sol.set_initial_value(y0,t=0.0)
 
-xinit = pi/2 + 0j
-pxinit = 3*pi + 0j
+    dtim = tim[1]-tim[0]
+    dtre = tre[1]-tre[0]
+
+    print(dtim,dtre)
+    
+
+    tr = 0
+    dti = 1.0
+    sol.set_f_params(dti)
+    trun = dtre
+    while(tr<len(tre)):
+        #print('time',Time[tr][int(len(tim)/2)])
+        sol.integrate(trun)
+        data[tr][int(len(tim)/2)] = sol.y
+        #print(Time[0][ti],data[0][ti][0])
+        tr+=1
+        trun+=dtre
+    
+    #data[0][int(len(tim)/2)] = y0
+    #print(Time[0][int(len(tim)/2)],data[0][int(len(tim)/2)][0] )
+    #print(Time[0][int(len(tim)/2)])
+    #print(data[:][:][0])
+    
+    trun=dtim
+    for tr in range(len(tre)):
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)
+        dti = 1j
+        sol.set_f_params(dti)
+        
+        trun = dtim
+        for ti in range(int(len(tim)/2),len(tim)):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim
+        
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)    
+        #print(Time[tr][int(len(tim)/2)],'time')
+        dti = -1j
+        sol.set_f_params(dti)
+        trun = dtim
+            
+        for ti in arange(int(len(tim)/2),-1,-1):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim            
+
+
 data = zeros((len(tre),len(tim),2),dtype = complex)
 
-finalcondition(xinit,pxinit,data,tre,tim)
 
-op = open('Singularities_pendulum_point_1_branch_1.pkl','wb')
-pickle.dump(data,op)
-op.close()
+if(plot_full_time==1):
+    finalcondition_transversal(qinit,pinit,data,tre,tim)
 
-Ttarget = [0.0,3*pi]
+    op = open('/home/vijay/Codes/Pickle_files/Singularities_{}_point_1.pkl'.format(potkey),'wb')
+    pickle.dump(data,op)
+    op.close()
+
+Ttarget = [0.0,0.92,0.92+1j,1.5+1j,1.5]
+Ttarget = [0.0,0.12+1j,0.65+1j,0.65]
+Tusual = [0.0,5]
+Ttarget = [0.0,1.63,1.63+0.8j,1.92+0.8j,1.92]#1.92+0.8j,1.92]
 trajdata = zeros(2,dtype=complex)
-trajdatatunnel = contour_integration(xinit,pxinit,trajdata,Ttarget)
+trajdatatunnel = contour_integration(qinit,pinit,trajdata,Tusual)
+print('Final q,p', trajdatatunnel)
 
-plt.plot(xarr,pxarr)
-plt.show()
-xfinbar,pxfinbar = data[:,:,:2].transpose((2,0,1))
-pxfinbar = matrix.transpose(pxfinbar)
-Complex_plotter.plotcomplex(pxfinbar,1,10,tre[0],tre[len(tre)-1],tim[0],tim[len(tim)-1])
-plt.show()
+op = open('/home/vijay/Codes/Pickle_files/Time_contour_1D_for_point_1.pkl','wb')
+pickle.dump(Ttarget,op)
+op.close()
+    
+
+if(plot==1):
+
+    qre= np.arange(-20,20,0.05)
+    qim = np.arange(-20,20,0.05)
+    #print(xarr)
+    qreal,qimag = np.meshgrid(qre,qim)
+    # for xc in range(len(yarr)):
+        # plt.scatter(real(yarr[xc]),imag(yarr[xc]))
+    # Complex_plotter.plotcomplex(potential(0.0,xreal+1j*ximag),1,1,xre[0],xre[len(xre)-1],xim[0],xim[len(xim)-1])
+    # plt.show()
+    # for xc in range(len(xarr)):
+        # plt.scatter(real(xarr[xc]),imag(xarr[xc]))
+    # Complex_plotter.plotcomplex(potential(xreal+1j*ximag,0.0),1,1,xre[0],xre[len(xre)-1],xim[0],xim[len(xim)-1])
+    # plt.show()
+
+    plt.figure(1)
+    #plt.suptitle('Trajectory for initial conditions: ({},{})  Coordinate index: {}'.format(pointarr[0][0],pointarr[0][1],coordin))
+    for xc in range(len(xarr)):
+        plt.scatter(real(xarr[xc]),imag(xarr[xc]))#,color=colorarr[xc])
+    Complex_plotter.plotcomplex(potential(qreal+1j*qimag),1,1,qre[0],qre[len(qre)-1],qim[0],qim[len(qim)-1])
+    plt.show()
+    
+    qgrid=arange(-10,10,0.1)
+    plt.plot(qgrid,potential(qgrid))
+    plt.show()

@@ -17,31 +17,9 @@ import Complex_plotter
 import matplotlib.colors as mcolors
 from matplotlib.colors import hsv_to_rgb
 import io
+import matplotlib.cm as cm
 
-plot_full_time = 0
-#-------------------------------------------
-def add_clipboard_to_figures():
-    # use monkey-patching to replace the original plt.figure() function with
-    # our own, which supports clipboard-copying
-    oldfig = plt.figure
-
-    def newfig(*args, **kwargs):
-        fig = oldfig(*args, **kwargs)
-        def clipboard_handler(event):
-            if event.key == 'ctrl+c':
-                # store the image in a buffer using savefig(), this has the
-                # advantage of applying all the default savefig parameters
-                # such as background color; those would be ignored if you simply
-                # grab the canvas using Qt
-                buf = io.BytesIO()
-                fig.savefig(buf)
-                QApplication.clipboard().setImage(QImage.fromData(buf.getvalue()))
-                buf.close()
-
-        fig.canvas.mpl_connect('key_press_event', clipboard_handler)
-        return fig
-
-    plt.figure = newfig
+plot_full_time = 1
 #--------------------------------------------
 
 print(xinit,yinit)
@@ -52,8 +30,9 @@ pxarr = []
 pyarr = []
 xarr = []
 yarr=[]
+colorarr = []
 trajon = 0
-tsing = 1.55586 + 0.07651j
+
 #print(tre,tim)
 def make_colormap(seq):
     """Return a LinearSegmentedColormap
@@ -81,6 +60,7 @@ def f(t,r,dti, potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpot
     global current, tPrint, tPrintSpace
     #previous = turningpoints[1]
     #print("Hi")
+    #print('r',len(r))
     x,px,y,py,S, mpp1,mpp2,mpp3,mpp4,mpq1,mpq2,mpq3,mpq4,mqp1,mqp2,mqp3,mqp4,mqq1,mqq2,mqq3,mqq4 =  r
     ddV1 = ddpotential1(x,y)
     ddV2 = ddpotential2(x,y)
@@ -121,8 +101,8 @@ def faux(t,r,dti, potential,dxpotential,dypotential,ddpotential1,ddpotential2,dd
     #previous = turningpoints[1]
     #print("Hi")
     r = r.view(dtype=complex)
-    #print(len(r))
-    x,px,y,py,S, mpp1,mpp2,mpp3,mpp4,mpq1,mpq2,mpq3,mpq4,mqp1,mqp2,mqp3,mqp4,mqq1,mqq2,mqq3,mqq4,xinv =  r
+    #print('r',len(r))
+    x,px,y,py,S, mpp1,mpp2,mpp3,mpp4,mpq1,mpq2,mpq3,mpq4,mqp1,mqp2,mqp3,mqp4,mqq1,mqq2,mqq3,mqq4 =  r
     ddV1 = ddpotential1(x,y)
     ddV2 = ddpotential2(x,y)
     ddV3 = ddpotential3(x,y)
@@ -146,14 +126,14 @@ def faux(t,r,dti, potential,dxpotential,dypotential,ddpotential1,ddpotential2,dd
                  -(ddV3*mqp1 + ddV4*mqp3),-(ddV3*mqp2 + ddV4*mqp4),\
                  -(ddV1*mqq1 + ddV2*mqq3),-(ddV1*mqq2 + ddV2*mqq4),\
                  -(ddV3*mqq1 + ddV4*mqq3),-(ddV3*mqq2 + ddV4*mqq4),\
-                   mpp1,mpp2,mpp3,mpp4, mpq1,mpq2,mpq3,mpq4,px/(x-1j*pi/2)**3])*dti
+                   mpp1,mpp2,mpp3,mpp4, mpq1,mpq2,mpq3,mpq4])*dti
     #print('residue',x+1j*pi/2,(x+1j*pi/2)**3)              
     return drdt.view(dtype=float)
 
 def solout(t,r):
-    global trajon
+    global trajon,trajcolor
     r = r.view(dtype=complex)
-    x,px,y,py,S, mpp1,mpp2,mpp3,mpp4,mpq1,mpq2,mpq3,mpq4,mqp1,mqp2,mqp3,mqp4,mqq1,mqq2,mqq3,mqq4,xinv =  r
+    x,px,y,py,S, mpp1,mpp2,mpp3,mpp4,mpq1,mpq2,mpq3,mpq4,mqp1,mqp2,mqp3,mqp4,mqq1,mqq2,mqq3,mqq4=  r
     #if(trajon==1):
         #print('here')
     tarr.append(t)
@@ -161,9 +141,68 @@ def solout(t,r):
     pyarr.append(py)
     xarr.append(x)
     yarr.append(y)
+    colorarr.append(trajcolor)
+    
+def contour_integration(xinit,yinit,pxinit,pyinit,gammaf,gammai,trajdata,S20,T,xin,pxin,yin,pyin):
+    global trajon,trajcolor
+    sol = ode(faux)
+    sol.set_integrator('dop853',nsteps=1e10)
+    sol.set_solout(solout)
 
+    Sinit = -1j*(0.25*log(2*gammaxi/pi)) -1j*gammaxi*(xinit**2 - xin**2)+ (xinit*pxinit - xin*pxin) +\
+                               -1j*(0.25*log(2*gammayi/pi)) -1j*gammayi*(yinit**2 - yin**2)+ (yinit*pyinit - yin*pyin) 
+            
+    y0 = array([xinit,pxinit,yinit,pyinit,Sinit,1.0,0.0,0.0,1.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 1.0,0.0,0.0,1.0])
+    
+    print('y0',y0)
+    if(len(T) ==1):
+        sol.set_initial_value(y0.view(dtype=float),t=0.0)
+        trajdata = sol.y.view(dtype=complex)
+    else:
+        
+        tempsol = y0
+        colors = ['b','c','m','y','w','g']
+        
+        for tc in range(len(T)-1):
+            coloriterindex = tc%len(colors)
+            trajcolor = colors[coloriterindex]
+            print('trajcolor',trajcolor)
+            print('Time',T[tc])
+            if(tc==len(T)-2):
+                trajon=1
+                print('started')
+                
+            #print(tc)
+            
+            #print(T[tc+1]-T[tc])
+            timcom = T[tc+1]-T[tc]
+            abstim = abs(timcom)
+            #print('abstim',abstim)
+            dti = timcom/abstim
+            sol.set_initial_value(tempsol.view(dtype=float),t=0.0)
+            sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+            sol.integrate(abstim)
+            tempsol = sol.y.view(dtype=complex)
+        trajdata=sol.y.view(dtype=complex)
+        
+        print('Trajdata ',trajdata[:5],'xfinal',trajdata[0])
+        return trajdata
+
+def loop_around(tcoord):
+    tlb = (real(tcoord)-0.05) + 1j*(imag(tcoord)-0.05)
+    trb = (real(tcoord)+0.05) + 1j*(imag(tcoord)-0.05)
+    tlt = (real(tcoord)-0.05) + 1j*(imag(tcoord)+0.05)
+    trt = (real(tcoord)+0.05) + 1j*(imag(tcoord)+0.05)
+    
+    Timecontour = [0.0,real(tlb),tlb,tlt,trt,trb,tlb,real(tlb),0.0]#trb,trt,tlt,tlb,trb,trt,tlt,tlb,
+    op = open('/home/vijay/Codes/Pickle_files/Loop_contour_for_point_{}.pkl'.format(point),'wb')
+    pickle.dump(Timecontour,op)
+    op.close()
+    trajdata = zeros(21,dtype=complex)
+    loopdata = contour_integration(xinit,yinit,pxinit,pyinit,gammaf,gammai,trajdata,S20,Timecontour,x0,px0,y0,py0)
+    return loopdata
                    
-def finalcondition(xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,pxin,yin,pyin):
+def finalcondition_longitudinal(xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,pxin,yin,pyin):
     sol = ode(f)
     sol.set_integrator('zvode',nsteps=1e3)
     Sinit = -1j*(0.25*log(2*gammaxi/pi)) -1j*gammaxi*(xinit**2 - xin**2)+ (xinit*pxinit - xin*pxin) +\
@@ -218,47 +257,184 @@ def finalcondition(xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,
             data[tr][ti] = sol.y
             #print(Time[tr][ti],data[tr][ti][0])
             trun+=dtre
-
-def contour_integration(xinit,yinit,pxinit,pyinit,gammaf,gammai,trajdata,S20,T,xin,pxin,yin,pyin):
-    global trajon
-    sol = ode(faux)
-    sol.set_integrator('dop853',nsteps=1e10)
-    sol.set_solout(solout)
-
+            
+def finalcondition_transversal(xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,pxin,yin,pyin):
+    sol = ode(f)
+    sol.set_integrator('zvode',nsteps=1e3)
     Sinit = -1j*(0.25*log(2*gammaxi/pi)) -1j*gammaxi*(xinit**2 - xin**2)+ (xinit*pxinit - xin*pxin) +\
                                -1j*(0.25*log(2*gammayi/pi)) -1j*gammayi*(yinit**2 - yin**2)+ (yinit*pyinit - yin*pyin) 
             
-    y0 = array([xinit,pxinit,yinit,pyinit,Sinit,1.0,0.0,0.0,1.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 1.0,0.0,0.0,1.0,pxinit/(xinit-1j*pi/2)**3])
+    y0 = array([xinit,pxinit,yinit,pyinit,Sinit,1.0,0.0,0.0,1.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 1.0,0.0,0.0,1.0])
+    sol.set_initial_value(y0,t=0.0)
+
+    dtim = tim[1]-tim[0]
+    dtre = tre[1]-tre[0]
+
+    print(dtim,dtre)
     
-    print('y0',y0)
-    if(len(T) ==1):
-        sol.set_initial_value(y0.view(dtype=float),t=0.0)
-        trajdata = sol.y.view(dtype=complex)
-    else:
+
+    tr = 0
+    dti = 1.0
+    sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+    trun = dtre
+    while(tr<len(tre)):
+        #print('time',Time[tr][int(len(tim)/2)])
+        sol.integrate(trun)
+        data[tr][int(len(tim)/2)] = sol.y
+        #print(Time[0][ti],data[0][ti][0])
+        tr+=1
+        trun+=dtre
+    
+    #data[0][int(len(tim)/2)] = y0
+    #print(Time[0][int(len(tim)/2)],data[0][int(len(tim)/2)][0] )
+    #print(Time[0][int(len(tim)/2)])
+    #print(data[:][:][0])
+    
+    trun=dtim
+    for tr in range(len(tre)):
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)
+        dti = 1j
+        sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
         
-        tempsol = y0
-        for tc in range(len(T)-1):
-            print('Time',T[tc])
-            if(tc==len(T)-2):
-                trajon=1
-                print('started')
-                
-            #print(tc)
+        trun = dtim
+        for ti in range(int(len(tim)/2),len(tim)):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim
+        
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)    
+        #print(Time[tr][int(len(tim)/2)],'time')
+        dti = -1j
+        sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+        trun = dtim
             
-            #print(T[tc+1]-T[tc])
-            timcom = T[tc+1]-T[tc]
-            abstim = abs(timcom)
-            dti = timcom/abstim
-            sol.set_initial_value(tempsol.view(dtype=float),t=0.0)
-            sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
-            sol.integrate(abstim)
-            tempsol = sol.y.view(dtype=complex)
-        trajdata=sol.y.view(dtype=complex)
-        
-        print('Trajdata ',trajdata[:5],'xfinal',trajdata[0])
-        return trajdata
+        for ti in arange(int(len(tim)/2),-1,-1):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim
+            
+def finalcondition_loop_longitudinal(loop,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,pxin,yin,pyin):
+    sol = ode(f)
+    sol.set_integrator('zvode',nsteps=1e3)
+    Sinit = -1j*(0.25*log(2*gammaxi/pi)) -1j*gammaxi*(xinit**2 - xin**2)+ (xinit*pxinit - xin*pxin) +\
+                               -1j*(0.25*log(2*gammayi/pi)) -1j*gammayi*(yinit**2 - yin**2)+ (yinit*pyinit - yin*pyin) 
+    if(loop==0):        
+        y0 = array([xinit,pxinit,yinit,pyinit,Sinit,1.0,0.0,0.0,1.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 1.0,0.0,0.0,1.0])
+    else:
+        y0 = loopdata
+    sol.set_initial_value(y0,t=0.0)
+
+    dtim = tim[1]-tim[0]
+    dtre = tre[1]-tre[0]
+
+    print(dtim,dtre)
+    
+
+    ti = int(len(tim)/2) + 1
+    dti = 1j
+    sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+    trun = dtim
+    while(ti<len(tim)):
+        #print(Time[0][ti])
+        sol.integrate(trun)
+        data[0][ti] = sol.y
+        #print(Time[0][ti],data[0][ti][0])
+        ti+=1
+        trun+=dtim
         
 
+    sol.set_initial_value(y0,t=0.0)
+    dti = -1j
+    sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+    ti = int(len(tim)/2) - 1
+    trun = dtim
+    while(ti>=0):
+        sol.integrate(trun)
+        data[0][ti] = sol.y
+        #print(Time[0][ti],data[0][ti][0])
+        ti-=1
+        trun+=dtim
+        
+
+    data[0][int(len(tim)/2)] = y0
+    #print(Time[0][int(len(tim)/2)],data[0][int(len(tim)/2)][0] )
+    #print(Time[0][int(len(tim)/2)])
+    #print(data[:][:][0])
+    dti = 1.0
+    sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+    for ti in range(len(tim)):
+        sol.set_initial_value(data[0][ti],t=0.0)
+        trun=dtre
+        for tr in range(1,len(tre)):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti],data[tr][ti][0])
+            trun+=dtre
+
+def finalcondition_loop_transversal(loop,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,xin,pxin,yin,pyin):
+    sol = ode(f)
+    sol.set_integrator('zvode',nsteps=1e3)
+    Sinit = -1j*(0.25*log(2*gammaxi/pi)) -1j*gammaxi*(xinit**2 - xin**2)+ (xinit*pxinit - xin*pxin) +\
+                               -1j*(0.25*log(2*gammayi/pi)) -1j*gammayi*(yinit**2 - yin**2)+ (yinit*pyinit - yin*pyin) 
+    if(loop==0):        
+        y0 = array([xinit,pxinit,yinit,pyinit,Sinit,1.0,0.0,0.0,1.0, 0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0, 1.0,0.0,0.0,1.0])
+    else:
+        y0 = loopdata
+    sol.set_initial_value(y0,t=0.0)
+
+    dtim = tim[1]-tim[0]
+    dtre = tre[1]-tre[0]
+
+    print(dtim,dtre)
+    
+
+    tr = 0
+    dti = 1.0
+    sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+    trun = dtre
+    while(tr<len(tre)):
+        #print('time',Time[tr][int(len(tim)/2)])
+        sol.integrate(trun)
+        data[tr][int(len(tim)/2)] = sol.y
+        #print(Time[0][ti],data[0][ti][0])
+        tr+=1
+        trun+=dtre
+    
+    #data[0][int(len(tim)/2)] = y0
+    #print(Time[0][int(len(tim)/2)],data[0][int(len(tim)/2)][0] )
+    #print(Time[0][int(len(tim)/2)])
+    #print(data[:][:][0])
+    
+    trun=dtim
+    for tr in range(len(tre)):
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)
+        dti = 1j
+        sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+        
+        trun = dtim
+        for ti in range(int(len(tim)/2),len(tim)):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim
+        
+        sol.set_initial_value(data[tr][int(len(tim)/2)],t=0.0)    
+        #print(Time[tr][int(len(tim)/2)],'time')
+        dti = -1j
+        sol.set_f_params(dti,potential,dxpotential,dypotential,ddpotential1,ddpotential2,ddpotential3,ddpotential4)
+        trun = dtim
+            
+        for ti in arange(int(len(tim)/2),-1,-1):
+            sol.integrate(trun)
+            data[tr][ti] = sol.y
+            #print(Time[tr][ti])#,data[tr][ti][0])
+            trun+=dtim
+
+
+        
+#----------------------------------------------------------------------
 Time = zeros((len(tre),len(tim))) +0j
 
 
@@ -278,6 +454,8 @@ gammai = [[gammaxi,0],[0,gammayi]]
 S20= ([2*gammaxi*1j,0],[0,2*gammayi*1j])
 data = zeros((len(tre),len(tim),21),dtype = complex)
 
+#----------------------------------------------------------------------
+
 if(plot_full_time ==1):
 
     for i in range(len(pointarr)):
@@ -285,12 +463,42 @@ if(plot_full_time ==1):
         yinit = pointarr[i][1]
         pxinit = -1j*(2*gammaxi*x0 + 1j*px0 - 2*gammaxi*xinit)
         pyinit = -1j*(2*gammayi*y0 + 1j*py0 - 2*gammayi*yinit)
-        finalcondition(xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,x0,px0,y0,py0)
-        op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_pointarr_{}_branch_1.pkl'.format(i),'wb')
-        pickle.dump(data,op)
-        op.close()
+        branch = 'transversal'
+        
+        if(branch=='transversal'):
+            loop = 0
+            loopdata = zeros(21,dtype=complex)
 
-
+            if(loop==0):
+                finalcondition_loop_transversal(0,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,x0,px0,y0,py0)
+                op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_pointarr_{}_branch_2.pkl'.format(i),'wb')
+                pickle.dump(data,op)
+                op.close()
+            else:
+                tcoord = 2.72+1.28j
+                loopdata= loop_around(tcoord)
+                finalcondition_loop_transversal(1,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,x0,px0,y0,py0)
+                op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_pointarr_{}_branch_4.pkl'.format(i),'wb')
+                pickle.dump(data,op)
+                op.close()
+            
+        if(branch=='longitudinal'):
+            loop = 0
+            loopdata = zeros(21,dtype=complex)
+            
+            if(loop==0):
+                finalcondition_loop_longitudinal(0,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,x0,px0,y0,py0)
+                op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_pointarr_{}_branch_1.pkl'.format(i),'wb')
+                pickle.dump(data,op)
+                op.close()
+            else:
+                tcoord = 2.6934+0.6056j
+                loopdata= loop_around(tcoord)
+                finalcondition_loop_longitudinal(1,loopdata,xinit,yinit,pxinit,pyinit,gammaf,gammai,S20,data,tre,tim,x0,px0,y0,py0)
+                op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_pointarr_{}_branch_3.pkl'.format(i),'wb')
+                pickle.dump(data,op)
+                op.close()
+#-----------------------------------------------------------------------------------------
 
 trajdata = zeros(21,dtype=complex)
 
@@ -316,6 +524,26 @@ Tnonclassical = [0.0,3.624,3.624+0.6102j]#,3.7889+0.4102j]#4.709,4.709+1.103j,5.
 Tnonclassical = [0.0,4.265,4.265+0.5374j,4.9922+0.5374j,4.9922,10.0]#6.4295+1.0877j]#,4.702,10.0] # 4.4482,4.4482+0.4913j
 Tnonclassical = [0.0,2.6052,2.6052-0.2282j,3.0285-0.2282j,3.0285,10.0]
 Tnonclassical = [0.0,4.123,4.123+1.485j,4.353+1.485j,4.353,10.0]
+tcoord = 3.115+1.4562j
+tlb = (real(tcoord)-0.05) + 1j*(imag(tcoord)-0.05)
+trb = (real(tcoord)+0.05) + 1j*(imag(tcoord)-0.05)
+tlt = (real(tcoord)-0.05) + 1j*(imag(tcoord)+0.05)
+trt = (real(tcoord)+0.05) + 1j*(imag(tcoord)+0.05)
+    
+Tnonclassical = [0.0,real(tlb),tlb,tlt,trt,trb,real(trb),10.0]
+Tnonclassical = [0.0,2.6645,2.6645+0.08j,3.3+0.08j,3.3+1j,3.6+1j,3.6+0.08j,3.6,10.0]#3.0+0.9j,3.6+0.9j,3.6]#3.3,10.0]#3.2+0.7564j,]#2.9059,10.0]
+
+Tnonclassicalreal = real(Tnonclassical)
+Tnonclassicalimag = imag(Tnonclassical)
+
+Tnonclassical = [0.0,2.84,2.84+0.1j,3.0+0.1j,3.0,10.0]
+Tnonclassical = [0.0,2.73,2.73+1.23j,2.81+1.23j,2.81,10.0]
+Tnonclassical = [0.0,2.63,2.63+1.33j,2.83+1.33j,2.83,10.0]
+Tnonclassical = [0.0,2.33,2.33+1.96j,2.4027+1.96j,2.4027]
+Tnonclassical = [0.0,2.6113,2.6113+1.5189j,]#2.7130+1.5189j,2.7130]
+Tnonclassical = [0.0,2.59,2.59+1.49j,2.79+1.49j,2.79]#2.84]
+
+#3.3336+0.08j,3.3336+0.8874j,3.5191+0.8874j,3.5191,10.0]#,3.0093+0.8874j,]#3.2242+0.8874j]
 #[0.0,3.2,3.2+0.05j,3.3+0.05j,3.3,10.0]
 #[0.0,3.2,3.2-0.05j,3.3-0.05j,3.3+0.05j,3.2+0.05j,3.2-0.05j,3.3-0.05j,3.3,10.0]
 #[0.0,4.24,4.24+0.11j,4.24+0.2040j,4.13+0.2040j,4.13+0.11j,4.24+0.11j,4.24,10.0]
@@ -334,7 +562,7 @@ op.close()
 trajdatatunnel = contour_integration(xinit,yinit,pxinit,pyinit,gammaf,gammai,trajdata,S20,Ttarget,x0,px0,y0,py0)
 
 
-
+#---------------------------------------------------------------------------------------------
 
 pxarrinv = 1/np.array(pxarr)
 pyarrinv = 1/np.array(pyarr)
@@ -350,8 +578,8 @@ n=0.5 #x doesn't quite follow t^0.5, it goes as t^0.55
 
 if(plot==1):
 
-    xre= np.arange(-20,20,0.02)
-    xim = np.arange(-20,20,0.02)
+    xre= np.arange(-20,20,0.05)
+    xim = np.arange(-20,20,0.05)
     #print(xarr)
     xreal,ximag = np.meshgrid(xre,xim)
     # for xc in range(len(yarr)):
@@ -363,8 +591,10 @@ if(plot==1):
     # Complex_plotter.plotcomplex(potential(xreal+1j*ximag,0.0),1,1,xre[0],xre[len(xre)-1],xim[0],xim[len(xim)-1])
     # plt.show()
 
+    plt.figure(1)
+    plt.suptitle('Trajectory for initial conditions: ({},{})  Coordinate index: {}'.format(pointarr[0][0],pointarr[0][1],coordin))
     for xc in range(len(xarr)):
-        plt.scatter(real(xarr[xc]),real(yarr[xc]))
+        plt.scatter(real(xarr[xc]),real(yarr[xc]),color=colorarr[xc])
     Complex_plotter.plotcomplex(potential(xreal,ximag),1,1,xre[0],xre[len(xre)-1],xim[0],xim[len(xim)-1])
     plt.show()
     #plt.show()
@@ -400,13 +630,3 @@ if(plot==1):
 # plt.show()
 ####-------------------------------------
 
-#print('residue result',(pxinit**2-12*1j*pi)**0.5)
-op = open('/home/vijay/Codes/Pickle_files/Singularities_double_slit_corrected_point_{}_branch_1.pkl'.format(point),'wb')
-pickle.dump(data,op)
-op.close()
-
-#j0 = 0.25/(np.linalg.det(gammaf))*np.linalg.det(2*np.dot(gammaf,mqq) + 2*np.dot(np.dot(gammaf,mqp),S20) -1j*mpq - 1j*np.dot(mpp,S20))
-
-    
-
-    
